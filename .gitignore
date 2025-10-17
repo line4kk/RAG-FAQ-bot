@@ -1,3 +1,5 @@
 venv/
 .env
 __pycache__/
+faq.py
+test.py
