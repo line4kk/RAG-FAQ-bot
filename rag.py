@@ -8,13 +8,15 @@ import os
 
 
 class RAG:
-    def __init__(self, basic_prompt):
+    def __init__(self, basic_prompt : str, faq : dict):
         self.__ai_client = genai.Client(api_key=self.__get_api_key())
         self.__basic_prompt = basic_prompt  # Базовый промпт для ИИ, чтобы он понимал кто он. Должен заканчиваться на просьбу ответить на следующий вопрос и последующим двоеточием
         self.__embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        self.__faq : dict = None  # Кеш для FAQ
+        self.__faq : dict = {}  # Кеш для FAQ
         self.__questions : list = []  # Список вопросов
         self.__L1_search = None  # L1 поисковик
+
+        self.set_faq(faq)
 
     # Получить ключ API из env
     def __get_api_key(self) -> str:
@@ -40,7 +42,7 @@ class RAG:
     def add_aq(self, question : str, answer : str):
         if not isinstance(question, str) or not isinstance(answer, str):
             raise TypeError("Ключ и значение должны быть строками.")
-        if not question or not str:
+        if not question or not answer:
             raise ValueError("Пустой вопрос или ответ")
         if question in self.__faq:
             raise ValueError("Такой вопрос уже есть.")
@@ -57,6 +59,8 @@ class RAG:
         self.__update_vector_faq()
     
     def get_responce(self, text : str, model : str="gemini-2.5-flash", accuracy=2) -> str:
+        if not self.__faq:
+            raise RuntimeError("Не установлена база FAQ")
         similary_questions = self.__find_similar_questions(text)
         prompt = self.__basic_prompt + " " + text + f"Используй ИСКЛЮЧИТЕЛЬНО следующие данные о вопросах и ответах на них:"
         for question in similary_questions:
