@@ -30,6 +30,8 @@ class RAG:
         vector_question = self.__embedding_model.encode([question], convert_to_numpy=True)
         distances, indices = self.__L1_search.search(vector_question, count)
         results = [self.__questions[i] for i in indices[0]]
+        for i, idx in enumerate(indices[0]):
+            print(f"{i+1}. {self.__questions[idx]} — score: {distances[0][i]:.3f}")
         return results
 
     def __update_vector_faq(self):
