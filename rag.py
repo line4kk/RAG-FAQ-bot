@@ -9,11 +9,12 @@ import os
 
 
 class RAG:
-    def __init__(self, basic_prompt : str, faq : list):
+    def __init__(self, basic_prompt : str, faq : dict):
         self.__ai_client = genai.Client(api_key=self.__get_api_key())
         self.__basic_prompt = basic_prompt  # Базовый промпт для ИИ, чтобы он понимал кто он. Должен заканчиваться на просьбу ответить на следующий вопрос и последующим двоеточием
         self.__embedding_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-        self.__faq : list = []  # Кеш для FAQ
+        self.__faq : dict = {}  # Кеш для FAQ
+        self.__questions: list = []  # Список вопросов
         self.__L1_search = None  # L1 поисковик
 
         self.set_faq(faq)
@@ -31,14 +32,14 @@ class RAG:
         vector_question = np.ascontiguousarray(vector_question.astype('float32'))
         faiss.normalize_L2(vector_question)
         distances, indices = self.__L1_search.search(vector_question, count)
-        results = [self.__faq[i] for i in indices[0]]
+        results = [self.__questions[i] for i in indices[0]]
         print(results)
         for i, idx in enumerate(indices[0]):
-            print(f"{i+1}. {self.__faq[idx]} — score: {distances[0][i]:.3f}")
+            print(f"{i+1}. {self.__questions[idx]} — score: {distances[0][i]:.3f}")
         return results
 
     def __update_vector_faq(self):
-        vector_questions = self.__embedding_model.encode(self.__faq, convert_to_numpy=True)
+        vector_questions = self.__embedding_model.encode(self.__questions, convert_to_numpy=True)
         vector_questions = np.ascontiguousarray(vector_questions.astype('float32'))
         faiss.normalize_L2(vector_questions)
         dimension = vector_questions.shape[1]
@@ -54,7 +55,8 @@ class RAG:
             raise ValueError("Пустой вопрос или ответ")
         if question in self.__faq:
             raise ValueError("Такой вопрос уже есть.")
-        self.__faq.append(question)
+        self.__faq[question] = answer
+        self.__questions.append(question)
         self.__update_vector_faq()
 
     # Кэшировать FAQ
@@ -62,6 +64,7 @@ class RAG:
         if not faq:
             raise ValueError("Пустой словарь")
         self.__faq = faq
+        self.__questions = list(faq.keys())
         self.__update_vector_faq()
     
     def get_response(self, text : str, model : str="gemini-2.5-flash", accuracy=2) -> str:
