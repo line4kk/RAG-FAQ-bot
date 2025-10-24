@@ -20,7 +20,7 @@ class RetrievalAugmented:
     Подходит для построения FAQ-ботов или поддержки LLM.
     """
 
-    def __init__(self, dictionary: Dict[str, str], embedding_model: str = 'paraphrase-multilingual-MiniLM-L12-v2') -> None:
+    def __init__(self, dictionary: Dict[str, str], embedding_model: str = 'paraphrase-multilingual-MiniLM-L12-v2', min_score : float = 0.46) -> None:
         """
         Инициализация класса.
 
@@ -33,7 +33,7 @@ class RetrievalAugmented:
         self.__embedding_model: SentenceTransformer = SentenceTransformer(embedding_model)
         self.__L1_search: Optional[faiss.IndexFlatIP] = None
         self.__morph: pymorphy3.MorphAnalyzer = pymorphy3.MorphAnalyzer()
-        self.__ACCURACY: float = 0.5  # Порог релевантности для embedding
+        self.__ACCURACY: float = min_score  # Порог релевантности для embedding
 
         self.set_dict(dictionary)
         self.__update_embedding_faq()
