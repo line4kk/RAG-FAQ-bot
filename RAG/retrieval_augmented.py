@@ -187,6 +187,22 @@ class RetrievalAugmented:
         self._data_dict = cleaned_dict
         self._data_keys = list(cleaned_dict.keys())
 
+    def add_aq(self, question: str, answer: str):
+        if not isinstance(question, str) or not isinstance(answer, str):
+            raise TypeError("Ключ и значение должны быть строками.")
+        if not question or not answer:
+            raise ValueError("Пустой вопрос или ответ.")
+
+        question = self.__normalize_text(question)
+        answer = self.__normalize_text(answer)
+
+        if question in self._data_dict:
+            raise ValueError("Такой вопрос уже есть.")
+
+        self._data_dict[question] = answer
+        self._data_keys.append(question)
+        self.__update_embedding_faq()
+
     def retrieval(self, question: str, kw_res_len: int = 5, emb_res_len: int = 2) -> List[str]:
         """
         Основной метод retrieval для RAG.

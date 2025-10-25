@@ -19,16 +19,6 @@ class RAGeneration(RetrievalAugmented):
         load_dotenv(find_dotenv())
         return os.getenv("GEMINI_API_KEY")
 
-    # Добавить новую пару вопрос-ответ в кеш
-    def add_aq(self, question : str, answer : str):
-        if not isinstance(question, str) or not isinstance(answer, str):
-            raise TypeError("Ключ и значение должны быть строками.")
-        if not question or not answer:
-            raise ValueError("Пустой вопрос или ответ.")
-        if question in self._data_dict:
-            raise ValueError("Такой вопрос уже есть.")
-        self._data_dict[question] = answer
-        self._data_keys.append(question)
 
     def get_response(self, text : str, model : str="gemini-2.5-flash", kw_res_max_len=2, emb_res_max_len=3) -> str:
         if not self._data_dict:
