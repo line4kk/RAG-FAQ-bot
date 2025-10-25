@@ -46,7 +46,8 @@ class RetrievalAugmented:
         """
         return [self.__morph.parse(word)[0].normal_form for word in words]
 
-    def __normalize_text(self, text: str) -> str:
+    @staticmethod
+    def __normalize_text(text: str) -> str:
         """Нормализация текста: приведение к нижнему регистру, удаление пунктуации."""
         return re.sub(r"[^\w\s]", "", text.lower()).strip()
 

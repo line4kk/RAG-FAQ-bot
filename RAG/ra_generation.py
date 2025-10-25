@@ -1,6 +1,6 @@
 from google import genai
 from google.genai import types
-from typing import List, Tuple, Dict, Optional
+from typing import Dict
 
 from dotenv import find_dotenv, load_dotenv
 import os
