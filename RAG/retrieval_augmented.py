@@ -1,13 +1,9 @@
-from google import genai
-from google.genai import types
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 import pymorphy3
 from typing import List, Tuple, Dict, Optional
-
-from dotenv import find_dotenv, load_dotenv
-import os
+import re
 
 class RetrievalAugmented:
     """
@@ -28,8 +24,8 @@ class RetrievalAugmented:
             dictionary: Словарь {вопрос: ответ}.
             embedding_model: Модель для генерации эмбеддингов.
         """
-        self.__data_dict: Dict[str, str] = dictionary
-        self.__data_keys: List[str] = []
+        self._data_dict: Dict[str, str] = dictionary
+        self._data_keys: List[str] = []
         self.__embedding_model: SentenceTransformer = SentenceTransformer(embedding_model)
         self.__L1_search: Optional[faiss.IndexFlatIP] = None
         self.__morph: pymorphy3.MorphAnalyzer = pymorphy3.MorphAnalyzer()
@@ -50,6 +46,11 @@ class RetrievalAugmented:
         """
         return [self.__morph.parse(word)[0].normal_form for word in words]
 
+    @staticmethod
+    def __normalize_text(text: str) -> str:
+        """Нормализация текста: приведение к нижнему регистру, удаление пунктуации."""
+        return re.sub(r"[^\w\s]", "", text.lower()).strip()
+
     def keyword_analysis(self, question: str, top_k: int = 5) -> List[str]:
         """
         Поиск ключевых вопросов из FAQ на основе пересечения лемматизированных слов.
@@ -64,15 +65,16 @@ class RetrievalAugmented:
         if not question:
             raise ValueError("Пустой вопрос")
 
+        question = self.__normalize_text(question)
         question_words = set(self.__lemmatize_words(question.lower().split()))
         scores: List[Tuple[int, str]] = []
 
-        for q in self.__data_dict.keys():
+        for q in self._data_dict.keys():
             faq_words = set(self.__lemmatize_words(q.lower().split()))
             match_count = len(question_words & faq_words)
             if match_count > 0:
                 scores.append((match_count, q))
-                print(f"Совпадений: {match_count}, Вопрос: {q}")
+                #print(f"Совпадений: {match_count}, Вопрос: {q}")
 
         # Сортировка по количеству совпадений
         scores.sort(reverse=True, key=lambda x: x[0])
@@ -97,6 +99,8 @@ class RetrievalAugmented:
         if not data_list:
             raise ValueError("Список для поиска пуст")
 
+        text = self.__normalize_text(text)
+
         # Создание embedding для списка
         embedding = self.__embedding_model.encode(data_list, convert_to_numpy=True)
         embedding = np.ascontiguousarray(embedding.astype('float32'))
@@ -114,9 +118,6 @@ class RetrievalAugmented:
         distances, indices = l1_search.search(vector_text, count)
         results = [(data_list[idx], distances[0][i]) for i, idx in enumerate(indices[0])]
 
-        for i, idx in enumerate(indices[0]):
-            print(f"{i+1}. {data_list[idx]} — score: {distances[0][i]:.3f}")
-
         return results
 
     def find_similar_text_in_data(self, text: str, count: int = 2) -> List[Tuple[str, float]]:
@@ -133,23 +134,23 @@ class RetrievalAugmented:
         if not text:
             raise ValueError("Пустой вопрос")
 
+        text = self.__normalize_text(text)
+
         vector_text = self.__embedding_model.encode([text], convert_to_numpy=True)
         vector_text = np.ascontiguousarray(vector_text.astype('float32'))
         faiss.normalize_L2(vector_text)
 
         distances, indices = self.__L1_search.search(vector_text, count)
-        results = [(self.__data_keys[idx], distances[0][i]) for i, idx in enumerate(indices[0])]
+        results = [(self._data_keys[idx], distances[0][i]) for i, idx in enumerate(indices[0])]
 
-        for i, idx in enumerate(indices[0]):
-            print(f"{i+1}. {self.__data_keys[idx]} — score: {distances[0][i]:.3f}")
+        # for i, idx in enumerate(indices[0]):
+        #     print(f"{i+1}. {self._data_keys[idx]} — score: {distances[0][i]:.3f}")
 
         return results
 
     def __update_embedding_faq(self) -> None:
-        """
-        Обновление векторного индекса FAISS для всей базы FAQ.
-        """
-        embedding = self.__embedding_model.encode(self.__data_keys, convert_to_numpy=True)
+        """Обновление векторного индекса FAISS для всей базы FAQ."""
+        embedding = self.__embedding_model.encode(self._data_keys, convert_to_numpy=True)
         embedding = np.ascontiguousarray(embedding.astype('float32'))
         faiss.normalize_L2(embedding)
 
@@ -157,17 +158,51 @@ class RetrievalAugmented:
         self.__L1_search = faiss.IndexFlatIP(dimension)
         self.__L1_search.add(embedding)
 
+    def get_dict(self):
+        """
+        Получение словаря FAQ
+        """
+        return self._data_dict
+
     def set_dict(self, dictionary: Dict[str, str]) -> None:
         """
-        Обновление словаря FAQ.
+        Обновление словаря FAQ с нормализацией текста.
+
+        Приводит вопросы и ответы к нижнему регистру,
+        удаляет лишние знаки препинания для повышения качества поиска.
 
         Args:
             dictionary: Новый словарь {вопрос: ответ}.
         """
         if not dictionary:
             raise ValueError("Пустой словарь")
-        self.__data_dict = dictionary
-        self.__data_keys = list(dictionary.keys())
+
+        cleaned_dict = {}
+
+        for q, a in dictionary.items():
+            # Очистка вопроса и ответа: убираем пунктуацию и лишние пробелы
+            clean_q = self.__normalize_text(q)
+            clean_a = self.__normalize_text(a)
+            cleaned_dict[clean_q] = clean_a
+
+        self._data_dict = cleaned_dict
+        self._data_keys = list(cleaned_dict.keys())
+
+    def add_aq(self, question: str, answer: str):
+        if not isinstance(question, str) or not isinstance(answer, str):
+            raise TypeError("Ключ и значение должны быть строками.")
+        if not question or not answer:
+            raise ValueError("Пустой вопрос или ответ.")
+
+        question = self.__normalize_text(question)
+        answer = self.__normalize_text(answer)
+
+        if question in self._data_dict:
+            raise ValueError("Такой вопрос уже есть.")
+
+        self._data_dict[question] = answer
+        self._data_keys.append(question)
+        self.__update_embedding_faq()
 
     def retrieval(self, question: str, kw_res_len: int = 5, emb_res_len: int = 2) -> List[str]:
         """
@@ -203,58 +238,5 @@ class RetrievalAugmented:
             if (accuracy > self.__ACCURACY) and (text not in retrieval_result)
         ]
         retrieval_result.extend(similar_texts)
-
-        return retrieval_result if retrieval_result else []
-
-
-
-class RAG:
-    def __init__(self, basic_prompt : str, faq : dict):
-        self.__ai_client = genai.Client(api_key=self.__get_api_key())
-        self.__basic_prompt = basic_prompt  # Базовый промпт для ИИ, чтобы он понимал кто он. Должен заканчиваться на просьбу ответить на следующий вопрос и последующим двоеточием
-        self.__faq : dict = {}  # Кеш для FAQ
-        self.__questions: list = []  # Список вопросов
-        self.__L1_search = None  # L1 поисковик
-
-        self.set_faq(faq)
-
-    # Получить ключ API из env
-    def __get_api_key(self) -> str:
-        load_dotenv(find_dotenv())
-        return os.getenv("GEMINI_API_KEY")
-
-    # Добавить новую пару вопрос-ответ в кеш
-    def add_aq(self, question : str, answer : str):
-        if not isinstance(question, str) or not isinstance(answer, str):
-            raise TypeError("Ключ и значение должны быть строками.")
-        if not question or not answer:
-            raise ValueError("Пустой вопрос или ответ")
-        if question in self.__faq:
-            raise ValueError("Такой вопрос уже есть.")
-        self.__faq[question] = answer
-        self.__questions.append(question)
-        self.__update_vector_faq()
-
-    # Кэшировать FAQ
-    def set_faq(self, faq : dict) -> None:
-        if not faq:
-            raise ValueError("Пустой словарь")
-        self.__faq = faq
-        self.__questions = list(faq.keys())
-        self.__update_vector_faq()
-    
-    def get_response(self, text : str, model : str="gemini-2.5-flash", accuracy=2) -> str:
-        if not self.__faq:
-            raise RuntimeError("Не установлена база FAQ")
-        similary_questions = self.__find_similar_questions(text)
-        prompt = self.__basic_prompt + " " + text + f"Используй ИСКЛЮЧИТЕЛЬНО следующие данные о вопросах и ответах на них:"
-        for question in similary_questions:
-            prompt += f"\nВопрос: {question}; Ответ: {self.__faq[question]}"
-        response = self.__ai_client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(thinking_budget=0)))
-
-        return response.text
-    
-
+        print(retrieval_result)
+        return retrieval_result
