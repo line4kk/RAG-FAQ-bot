@@ -8,4 +8,4 @@ class IsAdmin(Filter):
         pass
 
     async def __call__(self, message: Message) -> bool:
-        return message.chat.id in app_state.admins
+        return str(message.from_user.id) in app_state.admins
