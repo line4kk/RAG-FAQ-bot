@@ -1,9 +1,9 @@
 from aiogram import types, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, StateFilter
 
 start_rout = Router()
 
-@start_rout.message(CommandStart())
+@start_rout.message(CommandStart(), StateFilter(None))
 async def start(message: types.Message):
     await message.answer(
     "💎 Добро пожаловать в DiamondFitness!\n\n"
