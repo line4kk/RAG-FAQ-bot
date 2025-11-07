@@ -1,5 +1,7 @@
 from aiogram import types, Router
 
+import asyncio
+
 from RAG.ra_generation import RAGeneration
 from app_state import app_state
 
@@ -9,6 +11,6 @@ rag = RAGeneration("Ты — AI-ассистент виртуального ко
 
 @questions_handler_rout.message()
 async def questions_handler(message: types.Message):
-    await message.answer(rag.get_response(message.text))
+    await message.answer(await asyncio.to_thread(rag.get_response, message.text))
     
 
