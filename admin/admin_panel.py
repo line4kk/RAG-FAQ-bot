@@ -46,11 +46,11 @@ async def upload_faq(message: types.Message, state: FSMContext, bot: Bot):
     try:
         await bot.download_file(file_info.file_path, path)
         await message.answer("Успешно.")
-        app_state._load_faq()
+        app_state.reload_faq()
         await start_admin_panel(message, state)
 
-    except Exception as e:
-        await message.text("Произошла ошибка. Попробуйте еще раз.\n\n/admin - вернуться в панель администратора\n/exit - выйти из панели администратора")
+    except Exception:
+        await message.answer("Произошла ошибка. Попробуйте еще раз.\n\n/admin - вернуться в панель администратора\n/exit - выйти из панели администратора")
     
 
 
