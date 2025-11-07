@@ -189,6 +189,16 @@ class RetrievalAugmented:
         self._data_keys = list(cleaned_dict.keys())
 
     def add_aq(self, question: str, answer: str):
+        """
+        Добавить к словарю FAQ новую пару вопрос-ответ
+
+        Приводит вопрос и ответ к нижнему регистру,
+        удаляет лишние знаки препинания для повышения качества поиска.
+
+        Args:
+            question: Вопрос
+            answer: Ответ
+        """
         if not isinstance(question, str) or not isinstance(answer, str):
             raise TypeError("Ключ и значение должны быть строками.")
         if not question or not answer:
