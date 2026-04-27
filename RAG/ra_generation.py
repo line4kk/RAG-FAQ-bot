@@ -46,8 +46,7 @@ class RAGeneration(RetrievalAugmented):
         self.__basic_prompt = basic_prompt
 
     # Получить ключ API из env
-    @staticmethod
-    def __get_api_key() -> str:
+    def __get_api_key(self) -> str:
         """
         Загрузка ключа API из файла .env.
 
