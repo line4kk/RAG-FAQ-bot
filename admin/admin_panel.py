@@ -37,7 +37,7 @@ async def start_upload(message: types.Message, state: FSMContext):
 
 @admin_panel_rout.message(AdminStates.upload_faq_state, F.document)
 async def upload_faq(message: types.Message, state: FSMContext, bot: Bot):
-    if message.document.file_name != "faq.tsv":
+    if not message.document.file_name.endswith(".tsv"):
         await message.answer("Не допустимое разрешение файла. Поддерживается только .tsv")
         return
     
