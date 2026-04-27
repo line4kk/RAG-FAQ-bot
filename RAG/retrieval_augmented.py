@@ -24,15 +24,15 @@ class RetrievalAugmented:
             dictionary: Словарь {вопрос: ответ}.
             embedding_model: Модель для генерации эмбеддингов.
         """
-        self._data_dict: Dict[str, str] = dictionary
+        self._data_dict: Dict[str, str] = {}
         self._data_keys: List[str] = []
+        self._search_key_to_original: Dict[str, str] = {}
         self.__embedding_model: SentenceTransformer = SentenceTransformer(embedding_model)
         self.__L1_search: Optional[faiss.IndexFlatIP] = None
         self.__morph: pymorphy3.MorphAnalyzer = pymorphy3.MorphAnalyzer()
         self.__ACCURACY: float = min_score  # Порог релевантности для embedding
 
         self.set_dict(dictionary)
-        self.__update_embedding_faq()
 
     def __lemmatize_words(self, words: List[str]) -> List[str]:
         """
@@ -66,59 +66,20 @@ class RetrievalAugmented:
             raise ValueError("Пустой вопрос")
 
         question = self.__normalize_text(question)
-        question_words = set(self.__lemmatize_words(question.lower().split()))
+        question_words = set(self.__lemmatize_words(question.split()))
         scores: List[Tuple[int, str]] = []
 
-        for q in self._data_dict.keys():
-            faq_words = set(self.__lemmatize_words(q.lower().split()))
+        for normalized_q in self._data_keys:
+            faq_words = set(self.__lemmatize_words(normalized_q.split()))
             match_count = len(question_words & faq_words)
             if match_count > 0:
-                scores.append((match_count, q))
-                #print(f"Совпадений: {match_count}, Вопрос: {q}")
+                scores.append((match_count, self._search_key_to_original[normalized_q]))
 
         # Сортировка по количеству совпадений
         scores.sort(reverse=True, key=lambda x: x[0])
 
         # Возврат top_k вопросов
         return [q for _, q in scores[:top_k]]
-
-    def find_similar_text_in_list(self, text: str, data_list: List[str], count: int = 2) -> List[Tuple[str, float]]:
-        """
-        Векторный поиск по небольшому списку вопросов.
-
-        Args:
-            text: Входной вопрос.
-            data_list: Список вопросов для поиска.
-            count: Сколько топ результатов вернуть.
-
-        Returns:
-            Список кортежей (вопрос, score).
-        """
-        if not text:
-            raise ValueError("Пустой вопрос")
-        if not data_list:
-            raise ValueError("Список для поиска пуст")
-
-        text = self.__normalize_text(text)
-
-        # Создание embedding для списка
-        embedding = self.__embedding_model.encode(data_list, convert_to_numpy=True)
-        embedding = np.ascontiguousarray(embedding.astype('float32'))
-        faiss.normalize_L2(embedding)
-
-        dimension = embedding.shape[1]
-        l1_search = faiss.IndexFlatIP(dimension)
-        l1_search.add(embedding)
-
-        # Векторизация входного текста
-        vector_text = self.__embedding_model.encode([text], convert_to_numpy=True)
-        vector_text = np.ascontiguousarray(vector_text.astype('float32'))
-        faiss.normalize_L2(vector_text)
-
-        distances, indices = l1_search.search(vector_text, count)
-        results = [(data_list[idx], distances[0][i]) for i, idx in enumerate(indices[0])]
-
-        return results
 
     def find_similar_text_in_data(self, text: str, count: int = 2) -> List[Tuple[str, float]]:
         """
@@ -141,10 +102,8 @@ class RetrievalAugmented:
         faiss.normalize_L2(vector_text)
 
         distances, indices = self.__L1_search.search(vector_text, count)
-        results = [(self._data_keys[idx], distances[0][i]) for i, idx in enumerate(indices[0])]
+        results = [(self._search_key_to_original[self._data_keys[idx]], distances[0][i]) for i, idx in enumerate(indices[0])]
 
-        # for i, idx in enumerate(indices[0]):
-        #     print(f"{i+1}. {self._data_keys[idx]} — score: {distances[0][i]:.3f}")
 
         return results
 
@@ -168,8 +127,8 @@ class RetrievalAugmented:
         """
         Обновление словаря FAQ с нормализацией текста.
 
-        Приводит вопросы и ответы к нижнему регистру,
-        удаляет лишние знаки препинания для повышения качества поиска.
+        Нормализует только ключи для поиска. Оригинальные вопросы и ответы
+        сохраняются для передачи в prompt модели.
 
         Args:
             dictionary: Новый словарь {вопрос: ответ}.
@@ -177,23 +136,23 @@ class RetrievalAugmented:
         if not dictionary:
             raise ValueError("Пустой словарь")
 
-        cleaned_dict = {}
+        original_dict = dict(dictionary)
+        search_key_to_original = {}
 
-        for q, a in dictionary.items():
-            # Очистка вопроса и ответа: убираем пунктуацию и лишние пробелы
+        for q in dictionary:
+            # Нормализуем только ключи для поиска, ответы сохраняем как есть.
             clean_q = self.__normalize_text(q)
-            clean_a = self.__normalize_text(a)
-            cleaned_dict[clean_q] = clean_a
+            search_key_to_original[clean_q] = q
 
-        self._data_dict = cleaned_dict
-        self._data_keys = list(cleaned_dict.keys())
+        self._data_dict = original_dict
+        self._data_keys = list(search_key_to_original.keys())
+        self._search_key_to_original = search_key_to_original
+
+        self.__update_embedding_faq()
 
     def add_aq(self, question: str, answer: str):
         """
         Добавить к словарю FAQ новую пару вопрос-ответ
-
-        Приводит вопрос и ответ к нижнему регистру,
-        удаляет лишние знаки препинания для повышения качества поиска.
 
         Args:
             question: Вопрос
@@ -204,14 +163,14 @@ class RetrievalAugmented:
         if not question or not answer:
             raise ValueError("Пустой вопрос или ответ.")
 
-        question = self.__normalize_text(question)
-        answer = self.__normalize_text(answer)
+        normalized_question = self.__normalize_text(question)
 
-        if question in self._data_dict:
+        if normalized_question in self._search_key_to_original:
             raise ValueError("Такой вопрос уже есть.")
 
         self._data_dict[question] = answer
-        self._data_keys.append(question)
+        self._data_keys.append(normalized_question)
+        self._search_key_to_original[normalized_question] = question
         self.__update_embedding_faq()
 
     def retrieval(self, question: str, kw_res_len: int = 5, emb_res_len: int = 2) -> List[str]:
@@ -248,5 +207,4 @@ class RetrievalAugmented:
             if (accuracy > self.__ACCURACY) and (text not in retrieval_result)
         ]
         retrieval_result.extend(similar_texts)
-        print(retrieval_result)
         return retrieval_result

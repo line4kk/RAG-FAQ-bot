@@ -7,6 +7,7 @@ from filters.admin_filter import IsAdmin
 
 from app_state import app_state
 
+from handlers.questions_handler import rag
 admin_panel_rout = Router()
 admin_panel_rout.message.filter(IsAdmin())
 
@@ -45,14 +46,14 @@ async def upload_faq(message: types.Message, state: FSMContext, bot: Bot):
 
     try:
         await bot.download_file(file_info.file_path, path)
-        await message.answer("Успешно.")
         app_state.reload_faq()
+        rag.set_dict(app_state.faq)
+        await message.answer("Успешно.")
         await start_admin_panel(message, state)
 
     except Exception:
         await message.answer("Произошла ошибка. Попробуйте еще раз.\n\n/admin - вернуться в панель администратора\n/exit - выйти из панели администратора")
     
-
 
 
 @admin_panel_rout.message(Command("exit"))

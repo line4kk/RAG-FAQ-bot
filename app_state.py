@@ -36,7 +36,7 @@ class AppState:
 
     def reload_faq(self):
         """Обновить FAQ"""
-        self.rag = self._load_faq()
+        self.faq = self._load_faq()
 
 
 app_state = AppState()
